@@ -1,5 +1,5 @@
 # Cinderella — Cloudflare Worker 設定
-# §3 アーキテクチャ: Worker(Hono) が /api を、静的アセットがフロントを配信する。
+# Worker(Hono) が /api を、静的アセットがフロントを配信する。
 
 name = "cinderella"
 main = "src/index.ts"
@@ -7,15 +7,31 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
 # フロントエンド（暗号化/復号 UI）。/api 以外のパスはここから配信される。
+# public/_headers がセキュリティヘッダを付与する。
 [assets]
 directory = "./public"
 binding = "ASSETS"
 
-# §6 データモデル: 鍵なしの暗号文 blob を保管する KV。
-# 本番デプロイ前に `wrangler kv namespace create SECRETS` で実 id を発行して置き換える。
-[[kv_namespaces]]
-binding = "SECRETS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# 暗号文の保管とワンタイム破棄。1 秘密 = 1 インスタンスで read→burn を直列化する。
+[[durable_objects.bindings]]
+name = "SECRET_STORE"
+class_name = "SecretStore"
+
+# SQLite ストレージバックエンドの Durable Object。無料プランで利用できる。
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SecretStore"]
+
+# レート制限（IP 単位）。バインディングは無料・GA。カウントは拠点(colo)単位。
+[[ratelimits]]
+name = "CREATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "READ_LIMITER"
+namespace_id = "1002"
+simple = { limit = 30, period = 60 }
 
 [observability]
 enabled = true

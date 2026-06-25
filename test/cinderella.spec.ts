@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 import app from "../src/index";
 // フロントと同一の暗号モジュールでラウンドトリップを検証する。
@@ -87,7 +87,7 @@ describe("パスフレーズの誤入力", () => {
 });
 
 describe("maxViews=3", () => {
-  it("3回開封でき、4回目は gone、各回で TTL を維持する", async () => {
+  it("3回開封でき、4回目は gone", async () => {
     const { id, sealed } = await sealAndStore("triple", null, { maxViews: 3 });
 
     for (let i = 1; i <= 3; i++) {
@@ -98,11 +98,6 @@ describe("maxViews=3", () => {
       // 各回で復号が成功する。
       const pt = await open(record, sealed.keyToken, null);
       expect(pt).toBe("triple");
-      // 上限到達までは KV に残り、expiration が維持される。
-      if (i < 3) {
-        const meta = await env.SECRETS.getWithMetadata(`s:${id}`);
-        expect(meta.value).not.toBeNull();
-      }
     }
 
     const gone = await getSecret(id);
@@ -110,33 +105,81 @@ describe("maxViews=3", () => {
   });
 });
 
-describe("KV の保存内容検査", () => {
+describe("Durable Object の保存内容検査", () => {
   it("保存値に鍵トークン・平文が含まれない", async () => {
-    const { id, sealed } = await sealAndStore("no key in kv", null);
-    const raw = await env.SECRETS.get(`s:${id}`);
-    expect(raw).not.toBeNull();
-    const record = JSON.parse(raw!);
-    // 鍵を含まない暗号文レコードのフィールドのみが保存される。
-    expect(Object.keys(record).sort()).toEqual(
-      ["ct", "expiresAt", "iv", "maxViews", "salt", "views"].sort(),
-    );
-    expect(raw).not.toContain(sealed.keyToken);
-    expect(raw).not.toContain("no key in kv");
+    const { id, sealed } = await sealAndStore("no key in storage", null);
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName(id));
+    await runInDurableObject(stub, async (_instance, state) => {
+      const record = await state.storage.get<Record<string, unknown>>("record");
+      expect(record).toBeTruthy();
+      const json = JSON.stringify(record);
+      expect(json).not.toContain(sealed.keyToken);
+      expect(json).not.toContain("no key in storage");
+      expect(Object.keys(record!).sort()).toEqual(
+        ["ct", "expiresAt", "iv", "maxViews", "salt", "views"].sort(),
+      );
+    });
+  });
+});
+
+describe("ワンタイム破棄後のストレージ", () => {
+  it("開封後は Durable Object に何も残らない", async () => {
+    const { id } = await sealAndStore("burn me", null);
+    await getSecret(id);
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName(id));
+    await runInDurableObject(stub, async (_instance, state) => {
+      const record = await state.storage.get("record");
+      expect(record).toBeUndefined();
+    });
   });
 });
 
 describe("POST のバリデーション", () => {
   it("不正な ttl は 400", async () => {
-    const res = await postSecret({ ct: "AAAA", iv: "BBBB", salt: null, maxViews: 1, ttl: "99y" });
+    const s = await seal("x", null);
+    const res = await postSecret({ ct: s.ct, iv: s.iv, salt: null, maxViews: 1, ttl: "99y" });
     expect(res.status).toBe(400);
   });
   it("ct 欠落は 400", async () => {
-    const res = await postSecret({ iv: "BBBB", salt: null, maxViews: 1, ttl: "1h" });
+    const s = await seal("x", null);
+    const res = await postSecret({ iv: s.iv, salt: null, maxViews: 1, ttl: "1h" });
     expect(res.status).toBe(400);
   });
   it("maxViews 範囲外は 400", async () => {
-    const res = await postSecret({ ct: "AAAA", iv: "BBBB", salt: null, maxViews: 999, ttl: "1h" });
+    const s = await seal("x", null);
+    const res = await postSecret({ ct: s.ct, iv: s.iv, salt: null, maxViews: 999, ttl: "1h" });
     expect(res.status).toBe(400);
+  });
+  it("IV の長さ不正は 400", async () => {
+    const s = await seal("x", null);
+    const res = await postSecret({ ct: s.ct, iv: "AAAA", salt: null, maxViews: 1, ttl: "1h" });
+    expect(res.status).toBe(400);
+  });
+  it("巨大な暗号文は 400", async () => {
+    const s = await seal("x", null);
+    const huge = "A".repeat(90_000); // 上限 64KiB を超える base64url
+    const res = await postSecret({ ct: huge, iv: s.iv, salt: null, maxViews: 1, ttl: "1h" });
+    expect(res.status).toBe(400);
+  });
+  it("ボディ全体が大きすぎる場合は拒否される", async () => {
+    // 本番では Content-Length により 413、テスト経路では暗号文長で 400。いずれも拒否。
+    const big = "A".repeat(200_000);
+    const res = await postSecret({ ct: big, iv: "AAAAAAAAAAAAAAAA", salt: null, maxViews: 1, ttl: "1h" });
+    expect([400, 413]).toContain(res.status);
+  });
+  it("Content-Length 超過は 413", async () => {
+    // ヘッダを明示して早期拒否パスを検証する。
+    const s = await seal("x", null);
+    const res = await app.request(
+      "/api/secret",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": "999999" },
+        body: JSON.stringify({ ct: s.ct, iv: s.iv, salt: null, maxViews: 1, ttl: "1h" }),
+      },
+      env as Bindings,
+    );
+    expect(res.status).toBe(413);
   });
   it("不正な JSON は 400", async () => {
     const res = await app.request(
@@ -148,9 +191,14 @@ describe("POST のバリデーション", () => {
   });
 });
 
-describe("存在しない id", () => {
-  it("gone", async () => {
-    const res = await getSecret("doesnotexist1");
+describe("GET の id 検証", () => {
+  it("存在しない id は gone", async () => {
+    const res = await getSecret("doesnotexis1"); // 12 文字・形式は正しい
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "gone" });
+  });
+  it("形式不正な id は gone", async () => {
+    const res = await getSecret("too-short");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "gone" });
   });
