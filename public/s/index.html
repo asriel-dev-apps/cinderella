@@ -1,43 +1,45 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>burn — 秘密を開く</title>
+    <title>Cinderella — Open a secret</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <main>
-      <div class="brand">bur<span>n</span></div>
-      <div class="tagline">この秘密はあなたが開いた瞬間に破棄されます。</div>
+      <div class="brand">Cinder<span>ella</span></div>
+      <div class="tagline">This secret disappears the moment you open it.</div>
 
       <!-- recipient 状態（§8.1） -->
       <section id="recipient" class="card warn">
-        <h2>秘密が届いています</h2>
+        <h2>A secret is waiting for you</h2>
         <p class="note">
-          ⚠ 「開く」を押すと内容が表示され、リンクは<strong>無効化</strong>されます。
-          表示できるのは一度きりです。読む準備ができてから開いてください。
+          ⚠ Opening shows the contents and makes this link
+          <strong>unusable</strong>. You can view it only once — open it when
+          you're ready to read it.
         </p>
 
-        <label for="passphrase">パスフレーズ（設定されている場合のみ）</label>
+        <label for="passphrase">Passphrase (if one was set)</label>
         <input
           id="passphrase"
           type="text"
           autocomplete="off"
-          placeholder="送信者から別経路で受け取った場合に入力"
+          placeholder="Enter it if the sender shared one separately"
         />
+        <p id="passphrase-hint" class="note hidden"></p>
 
-        <button id="reveal">開く（そして破棄する）</button>
+        <button id="reveal">Reveal (then it's gone)</button>
       </section>
 
       <!-- revealed 状態（§8.1） -->
       <section id="revealed" class="card hidden">
-        <h2>中身</h2>
+        <h2>The secret</h2>
         <pre id="plaintext" class="secret"></pre>
-        <button id="copy" class="secondary">コピー</button>
+        <button id="copy" class="secondary">Copy</button>
         <p class="note">
-          このリンクはもう無効です。再読み込みしても何も得られません。
+          This link no longer works. Reloading will show nothing.
         </p>
       </section>
 
@@ -48,7 +50,7 @@
       </section>
     </main>
 
-    <footer>ゼロ知識・ワンタイム・エッジ配信 — burn</footer>
+    <footer>Cinderella · Zero-knowledge, one-time secret sharing</footer>
 
     <script type="module" src="/s/reveal.js"></script>
   </body>

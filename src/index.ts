@@ -100,6 +100,8 @@ app.get("/api/secret/:id", async (c) => {
   const raw = await c.env.SECRETS.get(key);
   // 不在・開封済み・TTL 失効はいずれも gone（§7.2 / §12-2,5）。
   if (raw === null) {
+    c.header("Cache-Control", "no-store");
+    c.header("Pragma", "no-cache");
     return c.json({ error: "gone" }, 404);
   }
 
@@ -111,12 +113,15 @@ app.get("/api/secret/:id", async (c) => {
     await c.env.SECRETS.delete(key);
   } else {
     // §6: 再 put では残存 TTL を維持するため expiresAt を明示。
+    // KV の expiration は 60 秒以上先である必要がある。
     await c.env.SECRETS.put(key, JSON.stringify(record), {
-      expiration: record.expiresAt,
+      expiration: Math.max(record.expiresAt, Math.floor(Date.now() / 1000) + 60),
     });
   }
 
   // 鍵は含めない。クライアントが URL の #fragment から保持している（§7.2）。
+  c.header("Cache-Control", "no-store");
+  c.header("Pragma", "no-cache");
   return c.json({
     ct: record.ct,
     iv: record.iv,

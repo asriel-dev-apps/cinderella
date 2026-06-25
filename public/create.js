@@ -44,7 +44,7 @@ $("seal").addEventListener("click", async () => {
     $("link").value = link;
     show("sealed");
   } catch (e) {
-    alert("封緘に失敗しました: " + e.message);
+    alert("Failed to create link: " + e.message);
   } finally {
     $("seal").disabled = false;
   }
@@ -53,8 +53,8 @@ $("seal").addEventListener("click", async () => {
 $("copy").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("link").value);
-    $("copy").textContent = "コピー済み";
-    setTimeout(() => ($("copy").textContent = "コピー"), 1500);
+    $("copy").textContent = "Copied";
+    setTimeout(() => ($("copy").textContent = "Copy"), 1500);
   } catch {
     $("link").select();
   }

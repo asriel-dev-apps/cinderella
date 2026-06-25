@@ -12,10 +12,18 @@ function showOnly(stateId) {
 }
 
 const ERRORS = {
-  gone: ["already opened", "この秘密は存在しないか、既に開封済みです。傍受の可能性があれば送信者に連絡し、当該秘密をローテートしてください。"],
-  expired: ["expired", "有効期限が切れています。"],
-  badkey: ["復号できません", "パスフレーズが違うか、リンクが不正・改竄されています（GCM 検証失敗）。"],
+  gone: [
+    "Already opened",
+    "This secret doesn't exist or has already been opened. If someone may have opened it first, tell the sender and rotate the affected password or key just in case.",
+  ],
+  expired: ["Expired", "This link has expired."],
+  badkey: [
+    "Couldn't open",
+    "The passphrase may be wrong, or the link may be corrupted.",
+  ],
 };
+
+let fetchedRecord = null;
 
 function showError(kind) {
   const [title, body] = ERRORS[kind] ?? ERRORS.badkey;
@@ -36,18 +44,23 @@ if (!id || !keyToken) {
 
 $("reveal").addEventListener("click", async () => {
   $("reveal").disabled = true;
+  $("passphrase-hint").classList.add("hidden");
   try {
-    // この GET がサーバー側の burn を引き起こす（§7.2）。
-    const res = await fetch(`/api/secret/${encodeURIComponent(id)}`);
-    if (res.status === 404) {
-      showError("gone");
-      return;
+    let record = fetchedRecord;
+    if (!record) {
+      // この GET がサーバー側の burn を引き起こす（§7.2）。
+      const res = await fetch(`/api/secret/${encodeURIComponent(id)}`);
+      if (res.status === 404) {
+        showError("gone");
+        return;
+      }
+      if (!res.ok) {
+        showError("gone");
+        return;
+      }
+      record = await res.json();
+      fetchedRecord = record;
     }
-    if (!res.ok) {
-      showError("gone");
-      return;
-    }
-    const record = await res.json();
 
     const passphrase = $("passphrase").value || null;
     let plaintext;
@@ -56,7 +69,11 @@ $("reveal").addEventListener("click", async () => {
       plaintext = await open(record, keyToken, passphrase);
     } catch {
       // パスフレーズ違い・改竄は GCM では区別不能（§4.3）。
-      showError("badkey");
+      $("passphrase-hint").textContent = "Check the passphrase and try again.";
+      $("passphrase-hint").classList.remove("hidden");
+      $("reveal").disabled = false;
+      $("passphrase").focus();
+      showOnly("recipient");
       return;
     }
 
@@ -70,8 +87,8 @@ $("reveal").addEventListener("click", async () => {
 $("copy").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("plaintext").textContent);
-    $("copy").textContent = "コピー済み";
-    setTimeout(() => ($("copy").textContent = "コピー"), 1500);
+    $("copy").textContent = "Copied";
+    setTimeout(() => ($("copy").textContent = "Copy"), 1500);
   } catch {
     /* noop */
   }

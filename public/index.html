@@ -1,82 +1,84 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>burn — ワンタイム秘密共有</title>
+    <title>Cinderella — One-time secret sharing</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <main>
-      <div class="brand">bur<span>n</span></div>
-      <div class="tagline">一度開いたら消えるリンク。中身はサーバーに届きません。</div>
+      <div class="brand">Cinder<span>ella</span></div>
+      <div class="tagline">
+        Share secret data for only a set number of opens and a limited time.
+      </div>
 
       <!-- create 状態（§8.1） -->
       <section id="create" class="card">
-        <label for="secret">秘密</label>
+        <label for="secret">Secret data</label>
         <textarea
           id="secret"
-          placeholder="パスワード / API キー / メモ…"
+          placeholder="Password / API key / note…"
           autofocus
         ></textarea>
 
         <div class="row">
           <div>
-            <label for="expires">有効期限</label>
+            <label for="expires">Expires</label>
             <select id="expires">
-              <option value="1h">1 時間</option>
-              <option value="24h" selected>24 時間</option>
-              <option value="7d">7 日</option>
+              <option value="1h">1 hour</option>
+              <option value="24h" selected>24 hours</option>
+              <option value="7d">7 days</option>
             </select>
           </div>
           <div>
-            <label for="opens">開封回数</label>
+            <label for="opens">Opens</label>
             <select id="opens">
-              <option value="1" selected>1 回（once）</option>
-              <option value="3">3 回</option>
-              <option value="10">10 回</option>
+              <option value="1" selected>Once</option>
+              <option value="3">3 times</option>
+              <option value="10">10 times</option>
             </select>
           </div>
         </div>
 
-        <label for="passphrase">パスフレーズ（任意・別経路で渡す）</label>
+        <label for="passphrase">Passphrase (optional)</label>
         <input
           id="passphrase"
           type="text"
           autocomplete="off"
-          placeholder="設定すると「リンク」と「パスフレーズ」の2要素になる"
+          placeholder="If set, both the link and passphrase are required to open"
         />
 
-        <button id="seal">封緘してリンクを作る</button>
+        <button id="seal">Encrypt &amp; create link</button>
         <p class="note">
-          暗号化はこのブラウザ内で行われます。鍵は URL の <code>#</code>
-          以降に入り、サーバーには送信されません。
+          Encryption happens entirely in your browser. The key lives after the
+          <code>#</code> in the URL and is never sent to the server.
         </p>
       </section>
 
       <!-- sealed 状態（§8.1） -->
       <section id="sealed" class="card hidden">
-        <h2>リンクを作成しました</h2>
+        <h2>Link created</h2>
         <p class="note ok">
-          ✓ 中身は見ていません（暗号化済みの blob しか保管していません）。
+          ✓ We never saw the contents — only encrypted data is stored.
         </p>
-        <label for="link">共有リンク</label>
+        <label for="link">Share link</label>
         <div class="linkbox">
           <input id="link" type="text" readonly />
-          <button id="copy" class="secondary">コピー</button>
+          <button id="copy" class="secondary">Copy</button>
         </div>
         <p class="note">
-          このリンクを相手に渡してください。パスフレーズを設定した場合は、別の経路で伝えてください。
-          受信者には「すぐ開く／"already opened" が出たら連絡」を依頼すると傍受検知になります。
+          Send this link to the recipient. If you set a passphrase, share it
+          through a separate channel. Ask them to open it soon and to tell you if
+          they see “Already opened” — that way you'll know if someone accessed it
+          first.
         </p>
-        <button id="again" class="secondary">もう一つ作る</button>
+        <button id="again" class="secondary">Create another</button>
       </section>
     </main>
 
-    <footer>
-      ゼロ知識・ワンタイム・エッジ配信 — burn
-    </footer>
+    <footer>Cinderella · Zero-knowledge, one-time secret sharing</footer>
 
     <script type="module" src="/create.js"></script>
   </body>

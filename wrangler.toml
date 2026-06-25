@@ -1,7 +1,7 @@
-# burn — Cloudflare Worker 設定
+# Cinderella — Cloudflare Worker 設定
 # §3 アーキテクチャ: Worker(Hono) が /api を、静的アセットがフロントを配信する。
 
-name = "burn"
+name = "cinderella"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]

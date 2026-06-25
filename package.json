@@ -1,9 +1,9 @@
 {
-  "name": "burn",
+  "name": "cinderella",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ワンタイム秘密共有サービス（ゼロ知識・エッジ配信）",
+  "description": "Cinderella — 一度きりの秘密共有サービス（ゼロ知識・エッジ配信）",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
