@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>burn — ワンタイム秘密共有</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="brand">bur<span>n</span></div>
+      <div class="tagline">一度開いたら消えるリンク。中身はサーバーに届きません。</div>
+
+      <!-- create 状態（§8.1） -->
+      <section id="create" class="card">
+        <label for="secret">秘密</label>
+        <textarea
+          id="secret"
+          placeholder="パスワード / API キー / メモ…"
+          autofocus
+        ></textarea>
+
+        <div class="row">
+          <div>
+            <label for="expires">有効期限</label>
+            <select id="expires">
+              <option value="1h">1 時間</option>
+              <option value="24h" selected>24 時間</option>
+              <option value="7d">7 日</option>
+            </select>
+          </div>
+          <div>
+            <label for="opens">開封回数</label>
+            <select id="opens">
+              <option value="1" selected>1 回（once）</option>
+              <option value="3">3 回</option>
+              <option value="10">10 回</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="passphrase">パスフレーズ（任意・別経路で渡す）</label>
+        <input
+          id="passphrase"
+          type="text"
+          autocomplete="off"
+          placeholder="設定すると「リンク」と「パスフレーズ」の2要素になる"
+        />
+
+        <button id="seal">封緘してリンクを作る</button>
+        <p class="note">
+          暗号化はこのブラウザ内で行われます。鍵は URL の <code>#</code>
+          以降に入り、サーバーには送信されません。
+        </p>
+      </section>
+
+      <!-- sealed 状態（§8.1） -->
+      <section id="sealed" class="card hidden">
+        <h2>リンクを作成しました</h2>
+        <p class="note ok">
+          ✓ 中身は見ていません（暗号化済みの blob しか保管していません）。
+        </p>
+        <label for="link">共有リンク</label>
+        <div class="linkbox">
+          <input id="link" type="text" readonly />
+          <button id="copy" class="secondary">コピー</button>
+        </div>
+        <p class="note">
+          このリンクを相手に渡してください。パスフレーズを設定した場合は、別の経路で伝えてください。
+          受信者には「すぐ開く／"already opened" が出たら連絡」を依頼すると傍受検知になります。
+        </p>
+        <button id="again" class="secondary">もう一つ作る</button>
+      </section>
+    </main>
+
+    <footer>
+      ゼロ知識・ワンタイム・エッジ配信 — burn
+    </footer>
+
+    <script type="module" src="/create.js"></script>
+  </body>
+</html>

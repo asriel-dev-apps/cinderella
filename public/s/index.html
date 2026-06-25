@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>burn — 秘密を開く</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="brand">bur<span>n</span></div>
+      <div class="tagline">この秘密はあなたが開いた瞬間に破棄されます。</div>
+
+      <!-- recipient 状態（§8.1） -->
+      <section id="recipient" class="card warn">
+        <h2>秘密が届いています</h2>
+        <p class="note">
+          ⚠ 「開く」を押すと内容が表示され、リンクは<strong>無効化</strong>されます。
+          表示できるのは一度きりです。読む準備ができてから開いてください。
+        </p>
+
+        <label for="passphrase">パスフレーズ（設定されている場合のみ）</label>
+        <input
+          id="passphrase"
+          type="text"
+          autocomplete="off"
+          placeholder="送信者から別経路で受け取った場合に入力"
+        />
+
+        <button id="reveal">開く（そして破棄する）</button>
+      </section>
+
+      <!-- revealed 状態（§8.1） -->
+      <section id="revealed" class="card hidden">
+        <h2>中身</h2>
+        <pre id="plaintext" class="secret"></pre>
+        <button id="copy" class="secondary">コピー</button>
+        <p class="note">
+          このリンクはもう無効です。再読み込みしても何も得られません。
+        </p>
+      </section>
+
+      <!-- error 状態（§8.1: gone / expired / badkey） -->
+      <section id="error" class="card error hidden">
+        <h2 id="error-title"></h2>
+        <p id="error-body" class="note"></p>
+      </section>
+    </main>
+
+    <footer>ゼロ知識・ワンタイム・エッジ配信 — burn</footer>
+
+    <script type="module" src="/s/reveal.js"></script>
+  </body>
+</html>

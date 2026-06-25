@@ -1,0 +1,21 @@
+# burn — Cloudflare Worker 設定
+# §3 アーキテクチャ: Worker(Hono) が /api を、静的アセットがフロントを配信する。
+
+name = "burn"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# フロントエンド（暗号化/復号 UI）。/api 以外のパスはここから配信される。
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# §6 データモデル: 鍵なしの暗号文 blob を保管する KV。
+# 本番デプロイ前に `wrangler kv namespace create SECRETS` で実 id を発行して置き換える。
+[[kv_namespaces]]
+binding = "SECRETS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[observability]
+enabled = true
