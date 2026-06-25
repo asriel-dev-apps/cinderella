@@ -1,5 +1,4 @@
-// create 画面: 封緘フロー（§8.2）
-// 鍵生成 → 暗号化 → POST /api/secret → #<id>.<key> を組み立てて提示。
+// 作成画面: 鍵生成 → 暗号化 → POST /api/secret → 共有リンクを組み立てて表示。
 
 import { seal } from "/crypto.js";
 
@@ -23,7 +22,7 @@ $("seal").addEventListener("click", async () => {
 
   $("seal").disabled = true;
   try {
-    // 鍵・平文はここから外に出ない。送るのは暗号文とメタのみ。
+    // 鍵・平文はクライアント外に出ない。送信するのは暗号文とメタ情報のみ。
     const s = await seal(plaintext, passphrase);
     const res = await fetch("/api/secret", {
       method: "POST",
@@ -39,7 +38,7 @@ $("seal").addEventListener("click", async () => {
     if (!res.ok) throw new Error(`server ${res.status}`);
     const { id } = await res.json();
 
-    // 鍵トークンは #fragment に。RFC 3986 によりサーバーへ送られない。
+    // 鍵は URL の #fragment に載せる。fragment はサーバーへ送信されない。
     const link = `${location.origin}/s/#${id}.${s.keyToken}`;
     $("link").value = link;
     show("sealed");

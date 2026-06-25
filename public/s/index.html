@@ -12,7 +12,7 @@
       <div class="brand">Cinder<span>ella</span></div>
       <div class="tagline">This secret disappears the moment you open it.</div>
 
-      <!-- recipient 状態（§8.1） -->
+      <!-- 受信状態 -->
       <section id="recipient" class="card warn">
         <h2>A secret is waiting for you</h2>
         <p class="note">
@@ -33,7 +33,7 @@
         <button id="reveal">Reveal (then it's gone)</button>
       </section>
 
-      <!-- revealed 状態（§8.1） -->
+      <!-- 開封完了状態 -->
       <section id="revealed" class="card hidden">
         <h2>The secret</h2>
         <pre id="plaintext" class="secret"></pre>
@@ -43,7 +43,7 @@
         </p>
       </section>
 
-      <!-- error 状態（§8.1: gone / expired / badkey） -->
+      <!-- エラー状態（gone / expired / badkey） -->
       <section id="error" class="card error hidden">
         <h2 id="error-title"></h2>
         <p id="error-body" class="note"></p>

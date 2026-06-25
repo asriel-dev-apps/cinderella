@@ -1,5 +1,4 @@
-// recipient 画面: 開封フロー（§8.2）
-// location.hash を id と key に分割 → GET /api/secret/:id → key（＋passphrase）で復号。
+// 受信画面: URL の #fragment を id と鍵に分割 → GET /api/secret/:id → 鍵で復号。
 
 import { open } from "/crypto.js";
 
@@ -48,7 +47,7 @@ $("reveal").addEventListener("click", async () => {
   try {
     let record = fetchedRecord;
     if (!record) {
-      // この GET がサーバー側の burn を引き起こす（§7.2）。
+      // この GET でサーバー側の開封カウントが進み、上限に達すると破棄される。
       const res = await fetch(`/api/secret/${encodeURIComponent(id)}`);
       if (res.status === 404) {
         showError("gone");
@@ -65,10 +64,10 @@ $("reveal").addEventListener("click", async () => {
     const passphrase = $("passphrase").value || null;
     let plaintext;
     try {
-      // 復号は完全にクライアント側。鍵は #fragment 由来。
+      // 復号はクライアント側で行う。鍵は URL の #fragment から取得済み。
       plaintext = await open(record, keyToken, passphrase);
     } catch {
-      // パスフレーズ違い・改竄は GCM では区別不能（§4.3）。
+      // 取得済みレコードは fetchedRecord に保持。再取得せずパスフレーズ再入力を促す。
       $("passphrase-hint").textContent = "Check the passphrase and try again.";
       $("passphrase-hint").classList.remove("hidden");
       $("reveal").disabled = false;

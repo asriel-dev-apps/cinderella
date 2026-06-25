@@ -1,6 +1,6 @@
-// burn 暗号モジュール（§4 暗号設計）
+// Cinderella 暗号モジュール
 //
-// 信頼境界の内側（ブラウザ）で完結する。rawKey と平文はネットワークを越えない。
+// 暗号化・復号はブラウザ内で完結する。鍵（rawKey）と平文はネットワークを越えない。
 // Web Crypto のみ使用。ブラウザと workerd（テスト）の両方で動作する。
 
 const utf8 = new TextEncoder();
@@ -31,12 +31,11 @@ function concat(a, b) {
   return out;
 }
 
-// --- 鍵導出（§4.1）-----------------------------------------------------------
+// --- 鍵導出 ------------------------------------------------------------------
 //
-// material = passphrase あり ? concat(rawKey, PBKDF2(passphrase, salt, 120k, SHA-256, 32B))
-//                            : rawKey
-// keyBytes = SHA-256(material)   // 32B に正規化
-// key      = importKey(keyBytes, "AES-GCM")
+// パスフレーズ指定時は material = rawKey ‖ PBKDF2(passphrase, salt)、未指定時は rawKey。
+// material を SHA-256 で 32 バイトに正規化し、AES-GCM 鍵として importKey する。
+// パスフレーズ指定時は rawKey とパスフレーズの双方が復号に必須となる。
 async function deriveKey(rawKey, passphrase, salt) {
   let material = rawKey;
   if (passphrase) {
@@ -61,16 +60,16 @@ async function deriveKey(rawKey, passphrase, salt) {
   ]);
 }
 
-// --- 封緘（§4.1 / §8.2）------------------------------------------------------
+// --- 暗号化 ------------------------------------------------------------------
 // 戻り値の keyToken は URL の #fragment に載せ、サーバーには送らない。
 export async function seal(plaintext, passphrase) {
-  const rawKey = crypto.getRandomValues(new Uint8Array(32)); // §4.1 256bit
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // §4.1 12B
-  const salt = passphrase ? crypto.getRandomValues(new Uint8Array(16)) : null; // §4.1 16B
+  const rawKey = crypto.getRandomValues(new Uint8Array(32)); // 256 ビット鍵
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // GCM 用の IV
+  const salt = passphrase ? crypto.getRandomValues(new Uint8Array(16)) : null;
   const key = await deriveKey(rawKey, passphrase, salt);
 
   const ct = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv }, // 認証タグ込み（§4.3）
+    { name: "AES-GCM", iv }, // 認証タグを含む
     key,
     utf8.encode(plaintext),
   );
@@ -79,12 +78,12 @@ export async function seal(plaintext, passphrase) {
     ct: b64urlEncode(ct),
     iv: b64urlEncode(iv),
     salt: salt ? b64urlEncode(salt) : null,
-    keyToken: b64urlEncode(rawKey), // = URL の鍵トークン
+    keyToken: b64urlEncode(rawKey), // URL の #fragment に載せる鍵
   };
 }
 
-// --- 開封（§8.2）-------------------------------------------------------------
-// GCM タグ検証に失敗すると例外（= badkey: パスフレーズ違い or 改竄、§4.3）。
+// --- 復号 --------------------------------------------------------------------
+// 認証タグの検証に失敗すると例外を投げる（パスフレーズ違い、または改竄）。
 export async function open(record, keyToken, passphrase) {
   const rawKey = b64urlDecode(keyToken);
   const salt = record.salt ? b64urlDecode(record.salt) : null;

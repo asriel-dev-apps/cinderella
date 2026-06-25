@@ -40,18 +40,18 @@ async function sealAndStore(
   return { id, sealed };
 }
 
-describe("§12-1 封緘 → 開封", () => {
+describe("作成と開封", () => {
   it("平文が復号できる", async () => {
-    const { id, sealed } = await sealAndStore("hello burn 🔥", null);
+    const { id, sealed } = await sealAndStore("hello cinderella 🔥", null);
     const res = await getSecret(id);
     expect(res.status).toBe(200);
     const record = await res.json();
     const plaintext = await open(record, sealed.keyToken, null);
-    expect(plaintext).toBe("hello burn 🔥");
+    expect(plaintext).toBe("hello cinderella 🔥");
   });
 });
 
-describe("§12-2 同一リンクで2回目の開封（maxViews=1）", () => {
+describe("同一リンクの2回目の開封（maxViews=1）", () => {
   it("2回目は gone", async () => {
     const { id } = await sealAndStore("once only", null);
     const first = await getSecret(id);
@@ -62,10 +62,10 @@ describe("§12-2 同一リンクで2回目の開封（maxViews=1）", () => {
   });
 });
 
-describe("§12-3 暗号文を改竄して開封", () => {
-  it("badkey（GCM 検証失敗で復号不可）", async () => {
+describe("暗号文の改竄", () => {
+  it("復号に失敗する（GCM 認証タグ検証）", async () => {
     const sealed = await seal("tamper me", null);
-    // ct の末尾バイト（GCM タグ領域）を 1 bit 反転。
+    // ct の末尾バイト（GCM 認証タグ領域）を 1 bit 反転させる。
     const bytes = b64urlDecode(sealed.ct);
     bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 0x01;
     const tampered = { ...sealed, ct: b64urlEncode(bytes) };
@@ -73,8 +73,8 @@ describe("§12-3 暗号文を改竄して開封", () => {
   });
 });
 
-describe("§12-4 パスフレーズ必須を誤入力", () => {
-  it("正しいパスフレーズで復号でき、誤入力は badkey", async () => {
+describe("パスフレーズの誤入力", () => {
+  it("正しいパスフレーズで復号でき、誤入力では失敗する", async () => {
     const record = await seal("pw protected", "correct horse battery");
     const ok = await open(record, record.keyToken, "correct horse battery");
     expect(ok).toBe("pw protected");
@@ -86,8 +86,8 @@ describe("§12-4 パスフレーズ必須を誤入力", () => {
   });
 });
 
-describe("§12-6 maxViews=3", () => {
-  it("3回開封可、4回目は gone、各回で TTL を維持", async () => {
+describe("maxViews=3", () => {
+  it("3回開封でき、4回目は gone、各回で TTL を維持する", async () => {
     const { id, sealed } = await sealAndStore("triple", null, { maxViews: 3 });
 
     for (let i = 1; i <= 3; i++) {
@@ -95,10 +95,10 @@ describe("§12-6 maxViews=3", () => {
       expect(res.status).toBe(200);
       const record = (await res.json()) as { views: number };
       expect(record.views).toBe(i);
-      // 復号が毎回成功すること。
+      // 各回で復号が成功する。
       const pt = await open(record, sealed.keyToken, null);
       expect(pt).toBe("triple");
-      // 3回目に達するまでは KV に残り、expiration が維持されていること。
+      // 上限到達までは KV に残り、expiration が維持される。
       if (i < 3) {
         const meta = await env.SECRETS.getWithMetadata(`s:${id}`);
         expect(meta.value).not.toBeNull();
@@ -110,13 +110,13 @@ describe("§12-6 maxViews=3", () => {
   });
 });
 
-describe("§12-8 KV ダンプ検査", () => {
-  it("保存値に鍵トークン・平文が存在しない", async () => {
+describe("KV の保存内容検査", () => {
+  it("保存値に鍵トークン・平文が含まれない", async () => {
     const { id, sealed } = await sealAndStore("no key in kv", null);
     const raw = await env.SECRETS.get(`s:${id}`);
     expect(raw).not.toBeNull();
     const record = JSON.parse(raw!);
-    // 鍵なしの暗号文 blob のみ（§6）。
+    // 鍵を含まない暗号文レコードのフィールドのみが保存される。
     expect(Object.keys(record).sort()).toEqual(
       ["ct", "expiresAt", "iv", "maxViews", "salt", "views"].sort(),
     );
@@ -125,7 +125,7 @@ describe("§12-8 KV ダンプ検査", () => {
   });
 });
 
-describe("§7.1 バリデーション", () => {
+describe("POST のバリデーション", () => {
   it("不正な ttl は 400", async () => {
     const res = await postSecret({ ct: "AAAA", iv: "BBBB", salt: null, maxViews: 1, ttl: "99y" });
     expect(res.status).toBe(400);
@@ -148,7 +148,7 @@ describe("§7.1 バリデーション", () => {
   });
 });
 
-describe("§7.2 存在しない id", () => {
+describe("存在しない id", () => {
   it("gone", async () => {
     const res = await getSecret("doesnotexist1");
     expect(res.status).toBe(404);
