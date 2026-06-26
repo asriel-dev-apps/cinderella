@@ -314,6 +314,22 @@ describe("レート制限", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  it("limiter が throw してもフェイルオープンで後続処理が走る", async () => {
+    // limiter の一過性障害（throw）は握って素通り。429 でも 5xx でもなく通常処理に進む。
+    const throwingLimiter = {
+      limit: async () => {
+        throw new Error("limiter down");
+      },
+    };
+    const res = await app.request(
+      "/api/secret/doesnotexis1",
+      { headers: { "CF-Connecting-IP": "203.0.113.1" } },
+      { ...env, READ_LIMITER: throwingLimiter } as Bindings,
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "gone" });
+  });
 });
 
 describe("API 応答のセキュリティヘッダ", () => {
