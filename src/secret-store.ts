@@ -19,13 +19,16 @@ export type PublicRecord = {
   views: number;
 };
 
-// 1 つの秘密につき 1 インスタンス。単一スレッドで read→burn を直列化し、
+// 1 つの秘密につき 1 インスタンス。単一スレッドで読み取りと破棄を直列化し、
 // KV の結果整合では得られない exactly-once を保証する。
 export class SecretStore extends DurableObject {
   // 暗号文を保存し、期限到達時の自動削除アラームを設定する。
-  async create(record: SecretRecord): Promise<void> {
+  // 既存レコードがあれば上書きせず false を返す（id 衝突時の黙殺破壊を防ぐ）。
+  async create(record: SecretRecord): Promise<boolean> {
+    if (await this.ctx.storage.get("record")) return false;
     await this.ctx.storage.put("record", record);
     await this.ctx.storage.setAlarm(record.expiresAt * 1000);
+    return true;
   }
 
   // 暗号文を 1 回分取得する。開封上限に達した時点で破棄する。
@@ -36,13 +39,13 @@ export class SecretStore extends DurableObject {
 
     const now = Math.floor(Date.now() / 1000);
     if (now >= record.expiresAt) {
-      await this.ctx.storage.deleteAll();
+      await this.destroy();
       return null;
     }
 
     record.views += 1;
     if (record.views >= record.maxViews) {
-      await this.ctx.storage.deleteAll();
+      await this.destroy();
     } else {
       await this.ctx.storage.put("record", record);
     }
@@ -57,7 +60,21 @@ export class SecretStore extends DurableObject {
   }
 
   // 期限到達時に呼ばれ、未開封のまま残った暗号文を破棄する。
+  // 例外時はランタイムが自動でアラームを再試行するため、ここでは握り潰さない。
   async alarm(): Promise<void> {
     await this.ctx.storage.deleteAll();
+  }
+
+  // レコードと、保留中の自動削除アラームをまとめて破棄する。
+  // 早期破棄後に不要なアラーム起動（無駄な書き込み）が残らないようにする。
+  private async destroy(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+    // アラーム解除は best-effort。失敗しても消費自体は成立しているので例外にしない
+    // （残ったアラームは後で 1 度起動するが、空ストレージを消すだけで無害）。
+    try {
+      await this.ctx.storage.deleteAlarm();
+    } catch (e) {
+      console.warn("deleteAlarm failed after destroy:", e);
+    }
   }
 }

@@ -1,111 +1,35 @@
-# Cinderella 🔥
+<p align="center" style="text-align: center">
+  <img src="public/logo-dark.png" alt="Cinderella — one-time password" width="340">
+</p>
 
-一度きりの秘密共有サービス（ゼロ知識・エッジ配信）。
+<p align="center" style="text-align: center"><b>Share a secret through a link that opens once — then turns to ash.</b></p>
 
-パスワードや API キーといった秘密を、**一度開いたら消えるリンク**で相手に渡す。
-秘密はブラウザ内で暗号化し、復号鍵は URL の `#` フラグメントに載せる。
-サーバー（Cloudflare）には**鍵なしの暗号文しか届かない**ため、運営者は中身を知り得ない。
+Send a password or API key through a link that can be opened **only once**.
+The secret is encrypted in your browser, so **the server never sees its contents**.
+The moment the recipient opens the link, it is shown to them and destroyed.
 
-設計の詳細は [`docs/design_spec.md`](docs/design_spec.md) を参照。
+## How it works
 
-## アーキテクチャ
+1. **Type your secret** — a password, an API key, or a short note.
+2. **Choose how long it lasts** (1 hour / 24 hours / 7 days) and **how many times it can be opened** (1 / 3 / 10).
+3. *(Optional)* Set a **passphrase** and share it through a different channel.
+4. Press **Encrypt & Create link**, then send the link to the recipient.
+5. They open the link and press **Reveal** — the secret is shown **once** and erased from the server.
+6. After that, the link shows **“Already opened.”** If the recipient sees that before their first look, someone reached it first — tell the sender and rotate the secret.
 
-```
-ブラウザ（信頼境界の内側）              Cloudflare エッジ（外側）
- 平文 → AES-256-GCM 暗号化   ──id+暗号文──▶  Worker(Hono) + Durable Object
- 鍵 = 乱数（#fragment、外に出ない）            鍵なしの暗号文を保管・ワンタイム破棄
-```
+<p align="center" style="text-align: center">
+  <img src="docs/images/01-create.png" width="360" alt="Type your secret, pick expiry and open limit, optional passphrase">
+  <img src="docs/images/02-sealed.png" width="360" alt="Copy the one-time share link">
+</p>
 
-- **Worker / Hono** (`src/index.ts`) — `/api/secret` の作成・開封。鍵も平文も受け取らない。
-- **Durable Object** (`src/secret-store.ts`) — 1 秘密 = 1 インスタンス。SQLite ストレージに
-  暗号文を保管し、read→burn を単一スレッドで直列化して exactly-once を保証する。
-- **フロント** (`public/`) — Web Crypto による暗号化/復号 UI。静的アセットとして配信。
-  `public/_headers` が CSP・HSTS 等のセキュリティヘッダを付与する。
-- **暗号モジュール** (`public/crypto.js`) — ブラウザとテストで共用する暗号処理。
+<p align="center" style="text-align: center">
+  <img src="docs/images/03-recipient.png" width="360" alt="Open once — revealing destroys the link">
+  <img src="docs/images/04-revealed.png" width="360" alt="The secret, shown a single time">
+</p>
 
-## セットアップ
+## Why it's safe
 
-```sh
-npm install
-```
-
-### ローカル開発
-
-```sh
-npm run dev          # wrangler dev（DO・レート制限・ヘッダをローカルで再現）
-```
-
-ブラウザで表示された URL を開き、秘密を作成 → 生成されたリンクを別タブで開く。
-
-### テスト
-
-```sh
-npm test             # vitest（workerd + ローカル DO で実行）
-npm run typecheck
-```
-
-### デプロイ
-
-Durable Object のマイグレーションはデプロイ時に自動適用される。事前のリソース作成は不要。
-
-```sh
-npm run deploy
-```
-
-すべて Cloudflare の無料プランの範囲で動作する（DO は SQLite ストレージバックエンド、
-レート制限バインディングはいずれも無料）。無料枠を超えた操作は課金されずエラーで停止する。
-
-## API
-
-| メソッド | パス | 用途 |
-|---|---|---|
-| `POST` | `/api/secret` | 作成。`{ ct, iv, salt, maxViews, ttl }` → `201 { id }` |
-| `GET` | `/api/secret/:id` | 開封 + ワンタイム破棄。`200 { ct, iv, salt, maxViews, views }` / `404 { error: "gone" }` |
-
-- `ttl` は `"1h" | "24h" | "7d"`。サーバー側で `expiresAt`（絶対エポック秒）に変換。
-- `maxViews` は 1〜10。開封上限に達した時点で破棄する。
-- 暗号文は 64KiB まで、リクエストボディは 128KiB まで。超過は `400` / `413`。
-- 作成・開封ともに IP 単位のレート制限を適用（作成 10 回/分、開封 30 回/分）。
-
-## 脅威モデル（要点）
-
-**守れる**: ストレージ/ログ流出（鍵なし暗号文のみ）、運営者の受動的閲覧、暗号文の改竄（GCM 認証タグ）、
-リンク再利用（ワンタイム破棄が傍受のトリップワイヤーになる）。
-
-**守れない（範囲外）**: リンク送信経路の漏洩（パスフレーズを別経路で渡して緩和）、
-悪意ある運営者による能動的なバックドア JS 配信（ブラウザ E2E の根本的な限界）、
-メタデータ（id・時刻・国・サイズ）、復号後の受信端末上の平文。
-
-## ワンタイム保証
-
-`id` ごとに専用の Durable Object へルーティングし、取得・カウント更新・破棄を単一スレッドで
-直列化する。これにより、複数リージョンからの同時アクセスでも二重開封は起こらない。
-
-## セキュリティ強化
-
-- **暗号**: AES-256-GCM。パスフレーズ併用時は PBKDF2-SHA-256（600,000 回）で派生し、
-  リンクとパスフレーズの独立 2 要素にする。
-- **ヘッダ**: `public/_headers` で CSP（`frame-ancestors 'none'`）、HSTS、
-  `Referrer-Policy: no-referrer`、`X-Content-Type-Options: nosniff` 等を全アセットに付与。
-- **濫用対策**: IP 単位レート制限、暗号文・ボディサイズ上限、id 形式検証。
-  ボリューム型 DDoS は Cloudflare が全プランで自動緩和する。
-- **コスト**: 無料プランに固定すれば、超過時は課金されずエラーで停止する。
-
-## テストでカバーするシナリオ
-
-| シナリオ | 状態 |
-|---|---|
-| 作成 → 開封で復号できる | ✅ |
-| 2 回目の開封（maxViews=1）→ gone | ✅ |
-| 暗号文の改竄 → 復号失敗 | ✅ |
-| パスフレーズ誤入力 → 復号失敗 | ✅ |
-| maxViews=3、4 回目で gone | ✅ |
-| 開封後に Durable Object へ何も残らない | ✅ |
-| 保存値に鍵・平文が含まれない | ✅ |
-| 暗号文・ボディサイズ超過 → 拒否 | ✅ |
-| 不正・不在の id → gone | ✅ |
-| `#` 以降がサーバーに送信されない | 設計上保証 |
-
-## ライセンス
-
-未定。
+- Encryption and decryption happen **only in your browser**. The decryption key lives in the part of the link after `#`, which browsers never send to the server.
+- So even if the server or its logs leak, **the contents cannot be read**.
+- Because it is destroyed on first open, it resists link reuse and interception.
+- For sensitive secrets, share a passphrase through a separate channel — then even a leaked link cannot be opened.
