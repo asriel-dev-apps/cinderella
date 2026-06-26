@@ -4,3 +4,7 @@ dist/
 .dev.vars
 *.log
 .DS_Store
+
+# 開発者向けドキュメント（公開リポジトリには含めない。手元のみ保持）
+docs/design_spec.md
+docs/security-review.md
