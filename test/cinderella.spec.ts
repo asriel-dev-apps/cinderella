@@ -181,6 +181,28 @@ describe("POST のバリデーション", () => {
     );
     expect(res.status).toBe(413);
   });
+  it("Content-Length 無しの巨大ボディはパース前にストリームで打ち切られ 413", async () => {
+    // ストリーム本体を流すと Content-Length は付かないため一次ゲートを通過し、
+    // readBodyCapped がバイト数で打ち切る経路（Content-Length 非依存の本丸）を検証する。
+    const big = new TextEncoder().encode("A".repeat(200_000)); // 上限 128KiB 超
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(big);
+        controller.close();
+      },
+    });
+    const res = await app.request(
+      "/api/secret",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: stream,
+        duplex: "half",
+      } as RequestInit,
+      env as Bindings,
+    );
+    expect(res.status).toBe(413);
+  });
   it("不正な JSON は 400", async () => {
     const res = await app.request(
       "/api/secret",
@@ -201,5 +223,125 @@ describe("GET の id 検証", () => {
     const res = await getSecret("too-short");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "gone" });
+  });
+});
+
+// テスト用のレート制限スタブ。呼び出しキーを記録できる。
+function stubLimiter(success: boolean, keys?: string[]) {
+  return {
+    limit: async ({ key }: { key: string }) => {
+      keys?.push(key);
+      return { success };
+    },
+  };
+}
+
+describe("レート制限", () => {
+  it("CREATE_LIMITER が拒否を返すと POST は 429", async () => {
+    const res = await app.request(
+      "/api/secret",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "CF-Connecting-IP": "203.0.113.1" },
+        body: "{}",
+      },
+      { ...env, CREATE_LIMITER: stubLimiter(false) } as Bindings,
+    );
+    expect(res.status).toBe(429);
+  });
+
+  it("READ_LIMITER が拒否を返すと GET は 429", async () => {
+    const res = await app.request(
+      "/api/secret/doesnotexis1",
+      { headers: { "CF-Connecting-IP": "203.0.113.1" } },
+      { ...env, READ_LIMITER: stubLimiter(false) } as Bindings,
+    );
+    expect(res.status).toBe(429);
+  });
+
+  it("制限有効かつ CF-Connecting-IP 欠落はフェイルクローズ（429）", async () => {
+    const res = await app.request(
+      "/api/secret",
+      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      { ...env, CREATE_LIMITER: stubLimiter(true) } as Bindings,
+    );
+    expect(res.status).toBe(429);
+  });
+
+  it("IPv6 のキーは /64 プレフィックスに正規化される", async () => {
+    const keys: string[] = [];
+    await app.request(
+      "/api/secret/doesnotexis1",
+      { headers: { "CF-Connecting-IP": "2001:db8:1234:5678:9abc:def0:1111:2222" } },
+      { ...env, READ_LIMITER: stubLimiter(true, keys) } as Bindings,
+    );
+    expect(keys).toEqual(["2001:db8:1234:5678"]);
+  });
+
+  it("圧縮表記（ゼロ含みプレフィックス）でも同一 /64 は同じキーに集約される", async () => {
+    // 同じ 2001:db8::/64 に属するが、圧縮表記・ホスト部だけ異なる 3 アドレス。
+    // 展開せずに先頭 4 hextet を取ると別キーに割れてレート制限を回避できてしまう。
+    const keys: string[] = [];
+    const limiter = stubLimiter(true, keys);
+    for (const ip of ["2001:db8::1", "2001:db8::5", "2001:db8::1:2:3:4"]) {
+      await app.request(
+        "/api/secret/doesnotexis1",
+        { headers: { "CF-Connecting-IP": ip } },
+        { ...env, READ_LIMITER: limiter } as Bindings,
+      );
+    }
+    expect(keys).toEqual(["2001:db8:0:0", "2001:db8:0:0", "2001:db8:0:0"]);
+  });
+
+  it("バインディング欠落時はフェイルオープン（通常応答）", async () => {
+    // 既定の env にはレート制限バインディングが無い。通常どおり 404 を返す。
+    const res = await getSecret("doesnotexis1");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("API 応答のセキュリティヘッダ", () => {
+  it("HSTS と Referrer-Policy が付く", async () => {
+    const res = await getSecret("doesnotexis1");
+    expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=63072000");
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+});
+
+describe("不正な base64url 長の拒否（L1）", () => {
+  it("17 文字の IV は 400", async () => {
+    const s = await seal("x", null);
+    const res = await postSecret({ ct: s.ct, iv: "A".repeat(17), salt: null, maxViews: 1, ttl: "1h" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("id 衝突ガード（L3）", () => {
+  it("既存レコードがあると create は false を返し上書きしない", async () => {
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName("collide-test1"));
+    await runInDurableObject(stub, async (instance) => {
+      const record = {
+        ct: "x".repeat(24),
+        iv: "y".repeat(16),
+        salt: null,
+        maxViews: 1,
+        views: 0,
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      };
+      expect(await instance.create(record)).toBe(true);
+      expect(await instance.create(record)).toBe(false);
+    });
+  });
+});
+
+describe("破棄時のアラーム解除（L2）", () => {
+  it("開封破棄後はアラームが残らない", async () => {
+    const { id } = await sealAndStore("burn with alarm", null);
+    await getSecret(id); // maxViews=1 なので開封で破棄される
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName(id));
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBeNull();
+    });
   });
 });
