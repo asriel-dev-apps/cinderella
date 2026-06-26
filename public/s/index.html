@@ -9,38 +9,48 @@
   </head>
   <body>
     <main>
-      <div class="brand">Cinder<span>ella</span></div>
-      <div class="tagline">This secret disappears the moment you open it.</div>
+      <header>
+        <img
+          class="logo-mark"
+          src="/logo-dark.png"
+          width="300"
+          alt="Cinderella — one-time password"
+        />
+        <p class="lede">
+          Open it <b>once</b>. The moment you read it, it's gone for good.
+        </p>
+      </header>
+
+      <hr class="fuse" />
 
       <!-- 受信状態 -->
       <section id="recipient" class="card warn">
-        <h2>A secret is waiting for you</h2>
+        <h2>A secret is waiting</h2>
         <p class="note">
-          ⚠ Opening shows the contents and makes this link
-          <strong>unusable</strong>. You can view it only once — open it when
-          you're ready to read it.
+          Revealing shows the contents and burns this link. You get one look —
+          open it when you're ready to read it.
         </p>
 
-        <label for="passphrase">Passphrase (if one was set)</label>
+        <label class="field-label" for="passphrase">
+          Passphrase <span class="opt">— if the sender set one</span>
+        </label>
         <input
           id="passphrase"
           type="text"
           autocomplete="off"
-          placeholder="Enter it if the sender shared one separately"
+          placeholder="The second key, shared with you separately"
         />
-        <p id="passphrase-hint" class="note hidden"></p>
+        <p id="passphrase-hint" class="passphrase-hint hidden"></p>
 
-        <button id="reveal">Reveal (then it's gone)</button>
+        <button id="reveal" class="btn btn-primary">Reveal secret</button>
       </section>
 
       <!-- 開封完了状態 -->
       <section id="revealed" class="card hidden">
-        <h2>The secret</h2>
+        <h2>Here it is</h2>
         <pre id="plaintext" class="secret"></pre>
-        <button id="copy" class="secondary">Copy</button>
-        <p class="note">
-          This link no longer works. Reloading will show nothing.
-        </p>
+        <button id="copy" class="btn btn-ghost">Copy</button>
+        <p class="note">This link is spent. Reloading shows nothing.</p>
       </section>
 
       <!-- エラー状態（gone / expired / badkey） -->
@@ -50,7 +60,10 @@
       </section>
     </main>
 
-    <footer>Cinderella · Zero-knowledge, one-time secret sharing</footer>
+    <footer>
+      <p class="foot-line">Encrypted in your browser — we never see your secret.</p>
+      <p class="foot-meta">© 2026 Tasuku Taira</p>
+    </footer>
 
     <script type="module" src="/s/reveal.js"></script>
   </body>

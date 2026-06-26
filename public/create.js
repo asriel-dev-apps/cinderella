@@ -4,11 +4,29 @@ import { seal } from "/crypto.js";
 
 const $ = (id) => document.getElementById(id);
 
+// セグメント型コントロール（radio グループ）の選択値を取る。
+const picked = (name) =>
+  document.querySelector(`input[name="${name}"]:checked`).value;
+
+// 秘密の最大文字数。textarea の maxlength と一致させる。
+const MAX_SECRET = 10000;
+const fmt = (n) => n.toLocaleString("en-US");
+
 function show(stateId) {
   for (const s of ["create", "sealed"]) {
     $(s).classList.toggle("hidden", s !== stateId);
   }
 }
+
+// 文字数カウンタを更新し、未入力なら封緘ボタンを失活させる。
+function refresh() {
+  const len = $("secret").value.length;
+  $("counter").textContent = `${fmt(len)} / ${fmt(MAX_SECRET)}`;
+  $("seal").disabled = $("secret").value.trim().length === 0;
+}
+
+$("secret").addEventListener("input", refresh);
+refresh();
 
 $("seal").addEventListener("click", async () => {
   const plaintext = $("secret").value;
@@ -17,8 +35,8 @@ $("seal").addEventListener("click", async () => {
     return;
   }
   const passphrase = $("passphrase").value || null;
-  const maxViews = parseInt($("opens").value, 10);
-  const ttl = $("expires").value;
+  const maxViews = parseInt(picked("opens"), 10);
+  const ttl = picked("expires");
 
   $("seal").disabled = true;
   try {
@@ -63,6 +81,7 @@ $("again").addEventListener("click", () => {
   $("secret").value = "";
   $("passphrase").value = "";
   $("link").value = "";
+  refresh();
   show("create");
   $("secret").focus();
 });

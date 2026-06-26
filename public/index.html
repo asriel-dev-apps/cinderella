@@ -9,76 +9,100 @@
   </head>
   <body>
     <main>
-      <div class="brand">Cinder<span>ella</span></div>
-      <div class="tagline">
-        Share secret data for only a set number of opens and a limited time.
-      </div>
+      <header>
+        <img
+          class="logo-mark"
+          src="/logo-dark.png"
+          width="300"
+          alt="Cinderella — one-time password"
+        />
+        <p class="lede">
+          Encrypt a secret in your browser, then share a link that opens
+          <b>once</b> — and turns to ash.
+        </p>
+      </header>
+
+      <hr class="fuse" />
 
       <!-- 作成状態 -->
       <section id="create" class="card">
-        <label for="secret">Secret data</label>
-        <textarea
-          id="secret"
-          placeholder="Password / API key / note…"
-          autofocus
-        ></textarea>
+        <label class="field-label" for="secret">Your secret</label>
+        <div class="secret-wrap">
+          <textarea
+            id="secret"
+            class="secret-input"
+            maxlength="10000"
+            placeholder="Password, API key, a private note…"
+            autofocus
+          ></textarea>
+          <span id="counter" class="counter" aria-live="polite">0 / 10,000</span>
+        </div>
 
-        <div class="row">
-          <div>
-            <label for="expires">Expires</label>
-            <select id="expires">
-              <option value="1h">1 hour</option>
-              <option value="24h" selected>24 hours</option>
-              <option value="7d">7 days</option>
-            </select>
+        <div class="dials">
+          <div class="dial">
+            <span class="field-label">Keep until</span>
+            <div class="segmented" role="radiogroup" aria-label="Expires">
+              <input type="radio" name="expires" id="exp-1h" value="1h" />
+              <label for="exp-1h">1 hour</label>
+              <input type="radio" name="expires" id="exp-24h" value="24h" checked />
+              <label for="exp-24h">24 hours</label>
+              <input type="radio" name="expires" id="exp-7d" value="7d" />
+              <label for="exp-7d">7 days</label>
+            </div>
           </div>
-          <div>
-            <label for="opens">Opens</label>
-            <select id="opens">
-              <option value="1" selected>Once</option>
-              <option value="3">3 times</option>
-              <option value="10">10 times</option>
-            </select>
+          <div class="dial">
+            <span class="field-label">Open limit</span>
+            <div class="segmented" role="radiogroup" aria-label="Opens">
+              <input type="radio" name="opens" id="op-1" value="1" checked />
+              <label for="op-1">Once</label>
+              <input type="radio" name="opens" id="op-3" value="3" />
+              <label for="op-3">3×</label>
+              <input type="radio" name="opens" id="op-10" value="10" />
+              <label for="op-10">10×</label>
+            </div>
           </div>
         </div>
 
-        <label for="passphrase">Passphrase (optional)</label>
+        <label class="field-label" for="passphrase">
+          Passphrase <span class="opt">— optional, share it separately</span>
+        </label>
         <input
           id="passphrase"
           type="text"
           autocomplete="off"
-          placeholder="If set, both the link and passphrase are required to open"
+          placeholder="A second key, needed alongside the link"
         />
 
-        <button id="seal">Encrypt &amp; create link</button>
-        <p class="note">
-          Encryption happens entirely in your browser. The key lives after the
-          <code>#</code> in the URL and is never sent to the server.
+        <button id="seal" class="btn btn-primary">Encrypt &amp; Create link</button>
+        <p class="reassure">
+          Encrypted on your device. The decryption key lives inside the link
+          itself and is never sent to the server.
         </p>
       </section>
 
       <!-- 作成完了状態 -->
       <section id="sealed" class="card hidden">
-        <h2>Link created</h2>
-        <p class="note ok">
-          ✓ We never saw the contents — only encrypted data is stored.
-        </p>
-        <label for="link">Share link</label>
+        <h2>Sealed</h2>
+        <p class="note ok"><span aria-hidden="true">✓</span> We never saw it — only ciphertext is stored.</p>
+
+        <label class="field-label" for="link">Share link</label>
         <div class="linkbox">
           <input id="link" type="text" readonly />
-          <button id="copy" class="secondary">Copy</button>
+          <button id="copy" class="btn btn-ghost">Copy</button>
         </div>
         <p class="note">
-          Send this link to the recipient. If you set a passphrase, share it
-          through a separate channel. Ask them to open it soon and to tell you if
-          they see “Already opened” — that way you'll know if someone accessed it
-          first.
+          Send it to the recipient. If you set a passphrase, share that through a
+          different channel. Ask them to open it soon — if they see “Already
+          opened,” someone reached it first.
         </p>
-        <button id="again" class="secondary">Create another</button>
+        <button id="again" class="btn btn-ghost">Create another</button>
       </section>
     </main>
 
-    <footer>Cinderella · Zero-knowledge, one-time secret sharing</footer>
+    <footer>
+      <p class="foot-line">Encrypted in your browser — we never see your secret.</p>
+      <p class="foot-meta">© 2026 Tasuku Taira</p>
+    </footer>
 
     <script type="module" src="/create.js"></script>
   </body>
