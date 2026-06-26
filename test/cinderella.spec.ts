@@ -236,6 +236,18 @@ function stubLimiter(success: boolean, keys?: string[]) {
   };
 }
 
+// 指定メソッドが必ず throw する SECRET_STORE スタブ（DO 障害を模す）。
+function throwingStore(method: "read" | "create") {
+  return {
+    idFromName: (name: string) => name,
+    get: () => ({
+      [method]: async () => {
+        throw new Error("storage down");
+      },
+    }),
+  } as unknown as typeof env.SECRET_STORE;
+}
+
 describe("レート制限", () => {
   it("CREATE_LIMITER が拒否を返すと POST は 429", async () => {
     const res = await app.request(
@@ -294,8 +306,12 @@ describe("レート制限", () => {
   });
 
   it("バインディング欠落時はフェイルオープン（通常応答）", async () => {
-    // 既定の env にはレート制限バインディングが無い。通常どおり 404 を返す。
-    const res = await getSecret("doesnotexis1");
+    // バインディング欠落を明示し、通常どおり 404 を返す（素通り）ことを確認する。
+    const res = await app.request(
+      "/api/secret/doesnotexis1",
+      { headers: { "CF-Connecting-IP": "203.0.113.1" } },
+      { ...env, READ_LIMITER: undefined } as Bindings,
+    );
     expect(res.status).toBe(404);
   });
 });
@@ -303,7 +319,9 @@ describe("レート制限", () => {
 describe("API 応答のセキュリティヘッダ", () => {
   it("HSTS と Referrer-Policy が付く", async () => {
     const res = await getSecret("doesnotexis1");
-    expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=63072000");
+    expect(res.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=63072000; includeSubDomains; preload",
+    );
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
@@ -318,19 +336,23 @@ describe("不正な base64url 長の拒否（L1）", () => {
 });
 
 describe("id 衝突ガード（L3）", () => {
-  it("既存レコードがあると create は false を返し上書きしない", async () => {
+  it("既存レコードがあると create は false を返し、既存値を上書きしない", async () => {
     const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName("collide-test1"));
-    await runInDurableObject(stub, async (instance) => {
-      const record = {
-        ct: "x".repeat(24),
+    await runInDurableObject(stub, async (instance, state) => {
+      const first = {
+        ct: "first-ct".padEnd(24, "x"),
         iv: "y".repeat(16),
         salt: null,
         maxViews: 1,
         views: 0,
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
       };
-      expect(await instance.create(record)).toBe(true);
-      expect(await instance.create(record)).toBe(false);
+      // 2 回目は中身を変えて投げ、上書きされていないことを観測できるようにする。
+      const second = { ...first, ct: "second-ct".padEnd(24, "z") };
+      expect(await instance.create(first)).toBe(true);
+      expect(await instance.create(second)).toBe(false);
+      const stored = await state.storage.get<{ ct: string }>("record");
+      expect(stored?.ct).toBe(first.ct);
     });
   });
 });
@@ -343,5 +365,119 @@ describe("破棄時のアラーム解除（L2）", () => {
     await runInDurableObject(stub, async (_instance, state) => {
       expect(await state.storage.getAlarm()).toBeNull();
     });
+  });
+});
+
+describe("期限切れ（expiry）", () => {
+  // 過去の expiresAt を持つレコードを直接注入するヘルパ。
+  // create() を使うと過去時刻のアラームが即発火し得るため、storage に直接 put する。
+  function expiredRecord(expiresAtOffsetSec: number) {
+    return {
+      ct: "x".repeat(24),
+      iv: "y".repeat(16),
+      salt: null,
+      maxViews: 1,
+      views: 0,
+      expiresAt: Math.floor(Date.now() / 1000) + expiresAtOffsetSec,
+    };
+  }
+
+  it("expiresAt を過ぎた秘密の GET は gone(404)", async () => {
+    const id = "expiredsec01"; // 12 文字・形式は正しい
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName(id));
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.put("record", expiredRecord(-1)); // 1 秒前 = 期限切れ
+    });
+    const res = await getSecret(id);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "gone" });
+  });
+
+  it("期限切れの GET 後はレコードもアラームも破棄される", async () => {
+    const id = "expiredsec02";
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName(id));
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.put("record", expiredRecord(-1));
+      await state.storage.setAlarm(Date.now() + 60_000); // 将来のアラーム → destroy で消えることを確認
+    });
+    await getSecret(id); // 期限切れ → read() が destroy()
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.get("record")).toBeUndefined();
+      expect(await state.storage.getAlarm()).toBeNull();
+    });
+  });
+
+  it("alarm() が呼ばれるとレコードを破棄する", async () => {
+    const id = "expiredsec03";
+    const stub = env.SECRET_STORE.get(env.SECRET_STORE.idFromName(id));
+    await runInDurableObject(stub, async (instance, state) => {
+      await state.storage.put("record", expiredRecord(-1));
+      await instance.alarm(); // 期限アラーム発火を直接呼ぶ
+      expect(await state.storage.get("record")).toBeUndefined();
+    });
+  });
+});
+
+describe("並行GETでの exactly-once（二重開封防止）", () => {
+  it("同一リンクへの同時GETは1件だけ成功し残りは gone", async () => {
+    // maxViews=1 のリンクに同時 GET を浴びせる。DO の直列化により、
+    // 読み取りは厳密に順序化され、成功は 1 件・残りは破棄後の 404 になる。
+    const { id, sealed } = await sealAndStore("only once concurrently", null);
+    const N = 8;
+    const results = await Promise.all(
+      Array.from({ length: N }, () => getSecret(id)),
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 404)).toHaveLength(N - 1);
+
+    // 唯一の 200 応答は正しく復号できる（壊れた暗号文を返していない）。
+    const ok = results[statuses.indexOf(200)]!;
+    const record = await ok.json();
+    expect(await open(record, sealed.keyToken, null)).toBe("only once concurrently");
+  });
+});
+
+describe("DO 障害時のエラー応答（L4）", () => {
+  it("read() 例外時の GET は 503", async () => {
+    const res = await app.request(
+      "/api/secret/doesnotexis1",
+      {},
+      { ...env, SECRET_STORE: throwingStore("read") } as Bindings,
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+  });
+
+  it("create() 例外時の POST は 503", async () => {
+    const s = await seal("x", null);
+    const res = await app.request(
+      "/api/secret",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ct: s.ct, iv: s.iv, salt: null, maxViews: 1, ttl: "1h" }),
+      },
+      { ...env, SECRET_STORE: throwingStore("create") } as Bindings,
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+  });
+});
+
+describe("ゼロ知識: GET 応答の形状", () => {
+  it("応答に expiresAt・平文・鍵トークンが含まれない", async () => {
+    const { id, sealed } = await sealAndStore("zero-knowledge response", null);
+    const res = await getSecret(id);
+    expect(res.status).toBe(200);
+    const record = (await res.json()) as Record<string, unknown>;
+    // 公開フィールドは ct/iv/salt/maxViews/views のみ。expiresAt は漏らさない。
+    expect(Object.keys(record).sort()).toEqual(
+      ["ct", "iv", "maxViews", "salt", "views"].sort(),
+    );
+    expect(record).not.toHaveProperty("expiresAt");
+    const json = JSON.stringify(record);
+    expect(json).not.toContain(sealed.keyToken);
+    expect(json).not.toContain("zero-knowledge response");
   });
 });
